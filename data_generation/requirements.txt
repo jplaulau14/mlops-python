@@ -1,0 +1,11 @@
+pandas
+ctgan
+Flask
+APScheduler
+scikit-learn
+joblib
+requests
+boto3
+gunicorn
+great_expectations
+sdv
