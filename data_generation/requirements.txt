@@ -1,8 +1,6 @@
 pandas
 ctgan
 Flask
-APScheduler
-scikit-learn
 joblib
 requests
 boto3
