@@ -5,6 +5,7 @@ from io import StringIO
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import GradientBoostingClassifier
 import pickle
+import io
 import logging
 
 logger = logging.getLogger()
@@ -67,13 +68,12 @@ def preprocess(data: pd.DataFrame) -> pd.DataFrame:
 
 def get_model():
     s3 = boto3.client('s3')
-    bucket = s3.get_bucket('mlops-python')
-    logger.info("Downloading model from S3")
-    bucket.download_file("models/gradient_boosting/gb_model.pkl", "model/gb_model_s3.pkl")
-    logger.info("Loading model")
-    with open("model/gb_model_s3.pkl", "rb") as f:
-        model = pickle.load(f)
-    logger.info("Model loaded")
+    model_obj = s3.get_object(Bucket="mlops-python", Key="models/gradient_boosting/gb_model.pkl")
+    model_bytes = model_obj['Body'].read()
+
+    model_stream = io.BytesIO(model_bytes)
+    model = pickle.load(model_stream)
+
     return model
 
 def index():
@@ -95,6 +95,11 @@ def predict(event, context):
     df_preprocessed = preprocess(df)
     logger.info("Data preprocessing completed")
 
+    logger.info("Dropping Churn column")
+    churn = df_preprocessed["Churn"]
+    df_preprocessed = df_preprocessed.drop(columns=["Churn"])
+    logger.info("Churn column dropped")
+
     logger.info("Loading model")
     model = get_model()
     logger.info("Model loaded")
@@ -105,11 +110,14 @@ def predict(event, context):
 
     logger.info("Attaching prediction to non-preprocessed data")
     df["prediction"] = y_pred
+    df['actual'] = churn
     logger.info("Prediction attached")
 
     logger.info("Writing data to S3")
     csv_buffer = StringIO()
-    s3.put_object(Bucket=bucket, Key="xgboost_predicted_data/" + key, Body=df.to_csv(csv_buffer))
+    df.to_csv(csv_buffer)
+    csv_buffer.seek(0)  
+    s3.put_object(Bucket=bucket, Key="xgboost_predicted_data/" + key, Body=csv_buffer.getvalue())
     logger.info("Data written to S3")
 
     return {
